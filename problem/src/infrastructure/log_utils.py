@@ -82,6 +82,7 @@ def dump_log(agent: nn.Module, train_logger: Logger, eval_logger: Logger, config
         pickle.dump(data, f)
 
     torch.save(agent.state_dict(), os.path.join(save_dir, 'agent.pt'))
+    
     return os.path.join(save_dir, 'agent.pt')
 
 
