@@ -6,7 +6,7 @@ import numpy as np
 import torch
 import tqdm
 
-import gym
+import gymnasium as gym
 import configs
 from agents import agents
 from infrastructure import utils
@@ -156,11 +156,11 @@ def setup_arguments(args=None):
     
     # Online retention of offline data
     # TODO(student): If desired, add arguments for online retention of offline data # not sure what this means honestly?
-    parser.add_arguemnt("--keep_off_data", type = bool, default = False)
+    parser.add_argument("--keep_off_data", type=bool, default=False)
     
     # WSRL
     # TODO (student): If desired, add arguments for WSRL 
-    parser.add_argumetn("--wsrl", type = bool, default = False)
+    parser.add_argument("--wsrl", type=bool, default=False)
     
 
     # IFQL
