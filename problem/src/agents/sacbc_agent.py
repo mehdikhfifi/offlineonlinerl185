@@ -25,6 +25,8 @@ class SACBCAgent(nn.Module):
         alpha: float,
     ):
         super().__init__()
+        
+        print(f"alpha value = {alpha}")
 
         self.actor = make_actor(observation_shape, action_dim)
         self.critic = make_critic(observation_shape, action_dim)
