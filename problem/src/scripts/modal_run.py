@@ -4,7 +4,7 @@ from pathlib import Path
 
 import modal
 
-from scripts.train_offline_online import main, setup_arguments
+from scripts.train_offline_online import main as train_main, setup_arguments
 
 
 APP_NAME = "offline-to-online-project"
@@ -63,6 +63,8 @@ app = modal.App(APP_NAME)
 
 env = {
     "PYTHONPATH": f"{PROJECT_DIR}/src",
+    # Persist runs under the mounted volume: /root/exp/<run_group>/<exp_name>/...
+    "OFFLINE_ONLINE_LOGDIR": VOLUME_PATH,
 }
 
 
@@ -70,10 +72,16 @@ env = {
 def offline_to_online_modal_remote(*args: str) -> None:
     args = setup_arguments(args)
     if args.njobs is not None and len(args.job_specs) > 0:
-        # Run n jobs in parallel
-        from scripts.run_njobs import main_njobs
+        from scripts.run_njobs_offline_online import main_njobs
+
         main_njobs(job_specs=args.job_specs, njobs=args.njobs)
     else:
         # Run a single job
-        main(args)
+        train_main(args)
     volume.commit()
+
+
+@app.local_entrypoint()
+def main(*args: str) -> None:
+    """Forward `modal run src/scripts/modal_run.py ...` args to the GPU worker."""
+    offline_to_online_modal_remote.remote(*args)

@@ -54,7 +54,6 @@ class FQLAgent(nn.Module):
         action = torch.clamp(action, -1, 1)
         return ptu.to_numpy(action)[0]
 
-    @torch.compile
     def get_bc_action(self, observation: torch.Tensor, noise: torch.Tensor):
         """
         Used for training.
@@ -68,7 +67,6 @@ class FQLAgent(nn.Module):
         action = torch.clamp(action, -1, 1)
         return action
 
-    @torch.compile
     def update_q(
         self,
         observations: torch.Tensor,
@@ -101,7 +99,6 @@ class FQLAgent(nn.Module):
             "q_min": q.min(),
         }
 
-    @torch.compile
     def update_bc_actor(
         self,
         observations: torch.Tensor,
@@ -125,7 +122,6 @@ class FQLAgent(nn.Module):
             "loss": loss,
         }
 
-    @torch.compile
     def update_onestep_actor(
         self,
         observations: torch.Tensor,

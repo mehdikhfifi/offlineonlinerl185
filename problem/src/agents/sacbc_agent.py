@@ -25,8 +25,6 @@ class SACBCAgent(nn.Module):
         alpha: float,
     ):
         super().__init__()
-        
-        print(f"alpha value = {alpha}")
 
         self.actor = make_actor(observation_shape, action_dim)
         self.critic = make_critic(observation_shape, action_dim)
@@ -53,7 +51,6 @@ class SACBCAgent(nn.Module):
         action = self.actor(observation).base_dist.base_dist.mode.tanh()
         return ptu.to_numpy(action[0])
 
-    @torch.compile
     def update_q(
         self,
         observations: torch.Tensor,
@@ -86,7 +83,6 @@ class SACBCAgent(nn.Module):
             "q_min": q.min(),
         }
 
-    @torch.compile
     def update_actor(
         self,
         observations: torch.Tensor,
@@ -121,7 +117,6 @@ class SACBCAgent(nn.Module):
             "mse": mses.mean(),
         }
 
-    @torch.compile
     def update_beta(
         self,
         observations: torch.Tensor,
