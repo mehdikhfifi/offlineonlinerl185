@@ -24,6 +24,7 @@ class FQLAgent(nn.Module):
         target_update_rate: float,
         flow_steps: int,
         alpha: float,
+        actor_factor: int
     ):
         super().__init__()
 
@@ -84,7 +85,7 @@ class FQLAgent(nn.Module):
             noise = torch.randn(next_observations.shape[0], self.action_dim, device=next_observations.device)
             next_actions = torch.clamp(self.onestep_actor(next_observations, noise), -1, 1)
             target_q = self.target_critic(next_observations, next_actions).mean(dim=0)
-            y = rewards + self.discount * (1 - dones) * target_q
+            y = rewards + self.discount * (1 - dones.int()) * target_q
 
         loss = ((q[0] - y) ** 2 + (q[1] - y) ** 2).mean()
 
@@ -109,7 +110,7 @@ class FQLAgent(nn.Module):
         """
         z = torch.randn_like(actions)
         t = torch.rand(observations.shape[0], 1, device=observations.device)
-        a_tilde = (1 - t) * z + t * actions
+        a_tilde = (1 - t) * z + t * actions # kind of like the point at which you're at
         target = actions - z
         predicted = self.bc_actor(observations, a_tilde, t)
         loss = ((predicted - target) ** 2).sum(dim=-1).mean() / self.action_dim
@@ -121,6 +122,9 @@ class FQLAgent(nn.Module):
         return {
             "loss": loss,
         }
+    
+
+    
 
     def update_onestep_actor(
         self,

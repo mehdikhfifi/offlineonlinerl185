@@ -25,6 +25,7 @@ def fql_config(
     alpha: float = 1.0,
     total_steps: int = 1000000,
     batch_size: int = 256,
+    actor_factor : int = 1,
     **kwargs,
 ):
     def make_bc_actor(observation_shape: Tuple[int, ...], action_dim: int) -> nn.Module:
@@ -32,7 +33,7 @@ def fql_config(
             ac_dim=action_dim,
             ob_dim=int(np.prod(observation_shape)),
             n_layers=num_layers,
-            layer_size=hidden_size,
+            layer_size= hidden_size,
         )
 
     def make_onestep_actor(observation_shape: Tuple[int, ...], action_dim: int) -> nn.Module:
@@ -40,7 +41,7 @@ def fql_config(
             ac_dim=action_dim,
             ob_dim=int(np.prod(observation_shape)),
             n_layers=num_layers,
-            layer_size=hidden_size,
+            layer_size= actor_factor * hidden_size,
         )
 
     def make_critic(observation_shape: Tuple[int, ...], action_dim: int) -> nn.Module:
@@ -83,6 +84,7 @@ def fql_config(
             "target_update_rate": target_update_rate,
             "flow_steps": flow_steps,
             "alpha": alpha,
+            "actor_factor": actor_factor
         },
         "agent": "fql",
         "log_name": log_string,

@@ -5,7 +5,7 @@ from datetime import datetime
 import numpy as np
 import torch
 import tqdm
-
+import wandb
 import configs
 from agents import agents
 from infrastructure import utils
@@ -92,7 +92,7 @@ def run_online_training_loop(config: dict, train_logger, eval_logger, args: argp
     torch.manual_seed(args.seed)
     ptu.init_gpu(use_gpu=not args.no_gpu, gpu_id=args.which_gpu)
 
-    env, _ = config["make_env_and_dataset"]()
+    env, offline_dataset = config["make_env_and_dataset"]()
     eval_env, _ = config["make_env_and_dataset"]()
 
     ep_len = _episode_length(env)
@@ -108,7 +108,28 @@ def run_online_training_loop(config: dict, train_logger, eval_logger, args: argp
     )
     agent.load_state_dict(torch.load(agent_path, weights_only=True))
 
-    replay_buffer = ReplayBuffer(config["replay_buffer_capacity"])
+    capacity = config["replay_buffer_capacity"]
+
+    if args.keep_off_data:
+        n_off = config["online_training_steps"] // 2
+        capacity = max(capacity, n_off + config["online_training_steps"])
+    replay_buffer = ReplayBuffer(capacity)
+
+    if args.keep_off_data:
+        replay_buffer.observations = np.empty((capacity, *offline_dataset.observations.shape[1:]), dtype=offline_dataset.observations.dtype)
+        replay_buffer.actions = np.empty((capacity, *offline_dataset.actions.shape[1:]), dtype=offline_dataset.actions.dtype)
+        replay_buffer.rewards = np.empty((capacity, *offline_dataset.rewards.shape[1:]), dtype=offline_dataset.rewards.dtype)
+        replay_buffer.next_observations = np.empty((capacity, *offline_dataset.next_observations.shape[1:]), dtype=offline_dataset.next_observations.dtype)
+        replay_buffer.dones = np.empty((capacity, *offline_dataset.dones.shape[1:]), dtype=offline_dataset.dones.dtype)
+        replay_buffer.observations[:n_off] = offline_dataset.observations[:n_off]
+        replay_buffer.actions[:n_off] = offline_dataset.actions[:n_off]
+        replay_buffer.rewards[:n_off] = offline_dataset.rewards[:n_off]
+        replay_buffer.next_observations[:n_off] = offline_dataset.next_observations[:n_off]
+        replay_buffer.dones[:n_off] = offline_dataset.dones[:n_off]
+        replay_buffer.size = n_off
+
+
+        print(f"Pre-loaded {n_off} offline transitions into the online replay buffer (capacity={capacity})")
 
     observation, _ = env.reset()
 
@@ -163,9 +184,9 @@ def run_online_training_loop(config: dict, train_logger, eval_logger, args: argp
                 step=log_step,
             )
 
-            dump_log(agent, train_logger, eval_logger, config, args.save_dir)
+            # dump_log(agent, train_logger, eval_logger, config, args.save_dir)
 
-    return dump_log(agent, train_logger, eval_logger, config, args.save_dir)
+    # return dump_log(agent, train_logger, eval_logger, config, args.save_dir)
 
 
 def setup_arguments(args=None):
@@ -180,33 +201,27 @@ def setup_arguments(args=None):
     parser.add_argument("--offline_training_steps", type=int, default=500000)  
     parser.add_argument("--online_training_steps", type=int, default=100000)  
     parser.add_argument("--replay_buffer_capacity", type=int, default=1000000)
-    parser.add_argument("--log_interval", type=int, default=10000)
-    parser.add_argument("--eval_interval", type=int, default=100000)
+    parser.add_argument("--log_interval", type=int, default=50000)
+    parser.add_argument("--eval_interval", type=int, default=50000)
     parser.add_argument("--num_eval_trajectories", type=int, default=25)  
     
     
-    parser.add_argument("--keep_off_data", type=bool, default=False)
-    
-    
-    
-    parser.add_argument("--wsrl", type=bool, default=False)
+    parser.add_argument("--keep_off_data", action="store_true")
+
+
+
+    parser.add_argument("--wsrl", action="store_true")
     
     
     
     parser.add_argument("--expectile", type=float, default=None)
-
-    
     parser.add_argument("--alpha", type=float, default=None)
-
-    
     parser.add_argument("--inv_temp", type=float, default=None)
-
-    
     parser.add_argument("--noise_scale", type=float, default=None)
-
-    
     parser.add_argument("--njobs", type=int, default=None)
     parser.add_argument("job_specs", nargs="*")
+    parser.add_argument("--actor_factor", type=int, default = None)
+    parser.add_argument("--k", type= int, default = None)
 
     args = parser.parse_args(args=args)
 
@@ -230,6 +245,7 @@ def main(args):
     config['replay_buffer_capacity'] = args.replay_buffer_capacity
     
     
+    
 
     exp_name = f"sd{args.seed}_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{config['log_name']}"
 
@@ -250,6 +266,13 @@ def main(args):
         exp_name = f"{exp_name}_online"
     if args.offline_training_steps > 0:
         exp_name = f"{exp_name}_offline"
+    if args.actor_factor is not None:
+        config['agent_kwargs']['actor_factor'] = args.actor_factor
+        exp_name = f"{exp_name}_actor_factor{args.actor_factor}"
+    if args.k is not None:
+        config['agent_kwargs']['k'] = args.k
+        exp_name = f"{exp_name}_k={args.k}"
+
 
     if args.online_training_steps > 0 and args.offline_training_steps == 0:
         raise ValueError(
@@ -275,6 +298,8 @@ def main(args):
         print(f"Running online training loop with {args.online_training_steps} steps")
         run_online_training_loop(config, train_logger, eval_logger, args, agent_path, start_step=start_step)
 
+    print("done training boss")
+    wandb.finish()
 
 if __name__ == "__main__":
     args = setup_arguments()
