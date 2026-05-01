@@ -3,6 +3,7 @@ import os
 from datetime import datetime
 
 import numpy as np
+import wandb
 import torch
 import tqdm
 
@@ -92,7 +93,7 @@ def run_online_training_loop(config: dict, train_logger, eval_logger, args: argp
     torch.manual_seed(args.seed)
     ptu.init_gpu(use_gpu=not args.no_gpu, gpu_id=args.which_gpu)
 
-    env, _ = config["make_env_and_dataset"]()
+    env, dataset = config["make_env_and_dataset"]()
     eval_env, _ = config["make_env_and_dataset"]()
 
     ep_len = _episode_length(env)
@@ -108,9 +109,35 @@ def run_online_training_loop(config: dict, train_logger, eval_logger, args: argp
     )
     agent.load_state_dict(torch.load(agent_path, weights_only=True))
 
-    replay_buffer = ReplayBuffer(config["replay_buffer_capacity"])
+    replay_buffer = ReplayBuffer(config['replay_buffer_capacity'])
+
+    offline_data = config['offline_data']
+
+    # Offline Data Prefill (4.1)
+    if offline_data > 0:
+        prefill = dataset.sample(offline_data)
+        replay_buffer.insert_batch(**prefill, batch_size=offline_data)
 
     observation, _ = env.reset()
+
+    # WSRL Loop (4.2)
+    for step in tqdm.trange(config["wsrl_steps"], dynamic_ncols=True):
+        action = agent.get_action(observation)
+        next_observation, reward, terminated, truncated, info = env.step(action)
+        done = terminated or truncated
+
+        replay_buffer.insert(
+            observation=observation,
+            action=action,
+            reward=reward,
+            next_observation=next_observation,
+            done=done,
+        )
+
+        if done:
+            observation, _ = env.reset()
+        else:
+            observation = next_observation
 
     for step in tqdm.trange(config["online_training_steps"], dynamic_ncols=True):
         log_step = start_step + step
@@ -124,7 +151,7 @@ def run_online_training_loop(config: dict, train_logger, eval_logger, args: argp
             action=action,
             reward=reward,
             next_observation=next_observation,
-            done=terminated,
+            done=done,
         )
 
         if done:
@@ -147,7 +174,10 @@ def run_online_training_loop(config: dict, train_logger, eval_logger, args: argp
             if log_step % args.log_interval == 0:
                 train_logger.log(update_info, step=log_step)
 
-        if log_step % args.eval_interval == 0:
+        oei = config["online_eval_interval"]
+        online_steps = config["online_training_steps"]
+        should_eval = (step > 0 and step % oei == 0) or (step == online_steps - 1)
+        if should_eval:
             trajectories = utils.sample_n_trajectories(
                 eval_env,
                 agent,
@@ -182,29 +212,15 @@ def setup_arguments(args=None):
     parser.add_argument("--replay_buffer_capacity", type=int, default=1000000)
     parser.add_argument("--log_interval", type=int, default=10000)
     parser.add_argument("--eval_interval", type=int, default=100000)
+    parser.add_argument("--online_eval_interval", type=int, default=10000)
     parser.add_argument("--num_eval_trajectories", type=int, default=25)  
-    
-    
-    parser.add_argument("--keep_off_data", type=bool, default=False)
-    
-    
-    
-    parser.add_argument("--wsrl", type=bool, default=False)
-    
-    
-    
+    parser.add_argument("--offline_data", type=int, default=0)
+    parser.add_argument("--wsrl_steps", type=int, default=0)
     parser.add_argument("--expectile", type=float, default=None)
-
-    
     parser.add_argument("--alpha", type=float, default=None)
-
-    
+    parser.add_argument("--noise_scale", type=float, default=None)
     parser.add_argument("--inv_temp", type=float, default=None)
 
-    
-    parser.add_argument("--noise_scale", type=float, default=None)
-
-    
     parser.add_argument("--njobs", type=int, default=None)
     parser.add_argument("job_specs", nargs="*")
 
@@ -226,9 +242,11 @@ def main(args):
     config['online_training_steps'] = args.online_training_steps
     config['log_interval'] = args.log_interval
     config['eval_interval'] = args.eval_interval
+    config['online_eval_interval'] = args.online_eval_interval
     config['num_eval_trajectories'] = args.num_eval_trajectories
     config['replay_buffer_capacity'] = args.replay_buffer_capacity
-    
+    config['offline_data'] = args.offline_data
+    config['wsrl_steps'] = args.wsrl_steps
     
 
     exp_name = f"sd{args.seed}_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{config['log_name']}"
@@ -263,17 +281,20 @@ def main(args):
     train_logger = Logger(os.path.join(args.save_dir, 'train.csv'))
     eval_logger = Logger(os.path.join(args.save_dir, 'eval.csv'))
 
-    start_step = 0
-    agent_path = None
-    if args.offline_training_steps > 0:
-        print(f"Running offline training loop with {args.offline_training_steps} steps")
-        agent_path = run_offline_training_loop(config, train_logger, eval_logger, args, start_step=0)
-        start_step = args.offline_training_steps
+    try:
+        start_step = 0
+        agent_path = None
+        if args.offline_training_steps > 0:
+            print(f"Running offline training loop with {args.offline_training_steps} steps")
+            agent_path = run_offline_training_loop(config, train_logger, eval_logger, args, start_step=0)
+            start_step = args.offline_training_steps
 
-    if args.online_training_steps > 0:
-        assert agent_path is not None
-        print(f"Running online training loop with {args.online_training_steps} steps")
-        run_online_training_loop(config, train_logger, eval_logger, args, agent_path, start_step=start_step)
+        if args.online_training_steps > 0:
+            assert agent_path is not None
+            print(f"Running online training loop with {args.online_training_steps} steps")
+            run_online_training_loop(config, train_logger, eval_logger, args, agent_path, start_step=start_step)
+    finally:
+        wandb.finish()
 
 
 if __name__ == "__main__":

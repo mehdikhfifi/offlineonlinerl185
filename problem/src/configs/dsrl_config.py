@@ -9,7 +9,7 @@ import torch.nn as nn
 import infrastructure.pytorch_util as ptu
 from infrastructure.replay_buffer import ReplayBuffer
 from infrastructure.utils import EpisodeMonitor
-from networks.rl_networks import Policy, EnsembleCritic, VectorFieldPolicy
+from networks.rl_networks import LogParam, Policy, EnsembleCritic, VectorFieldPolicy
 
 
 
@@ -28,20 +28,46 @@ def dsrl_config(
     **kwargs,
 ):
     def make_bc_flow_actor(observation_shape: Tuple[int, ...], action_dim: int) -> nn.Module:
-        # TODO(student): Create BC flow actor - refer to FQL config
-        return ...
+        # DONE(student): Create BC flow actor - refer to FQL config
+        return VectorFieldPolicy(
+            ac_dim=action_dim,
+            ob_dim=int(np.prod(observation_shape)),
+            n_layers=num_layers,
+            layer_size=hidden_size,
+        )
 
     def make_noise_actor(observation_shape: Tuple[int, ...], action_dim: int) -> nn.Module:
-        # TODO(student): Create noise actor - this can be a regular MLP
-        return ...
+        # DONE(student): Create noise actor - this can be a regular MLP
+        return Policy(
+            ac_dim=action_dim,
+            ob_dim=int(np.prod(observation_shape)),
+            discrete=False,
+            n_layers=num_layers,
+            layer_size=hidden_size,
+        )
 
     def make_critic(observation_shape: Tuple[int, ...], action_dim: int) -> nn.Module:
-        # TODO(student): Create critic - will be a ensemble of Q-functions
-        return ...
+        # DONE(student): Create critic - will be a ensemble of Q-functions
+        return EnsembleCritic(
+            ob_dim=int(np.prod(observation_shape)),
+            ac_dim=action_dim,
+            n_layers=num_layers,
+            size=hidden_size,
+            n_ensembles=2,
+        )
     
     def make_noise_critic(observation_shape: Tuple[int, ...], action_dim: int) -> nn.Module:
-        # TODO(student): Create noise critic - will be a ensemble of Q-functions
-        return ...
+        # DONE(student): Create noise critic - will be a ensemble of Q-functions
+        return EnsembleCritic(
+            ob_dim=int(np.prod(observation_shape)),
+            ac_dim=action_dim,
+            n_layers=num_layers,
+            size=hidden_size,
+            n_ensembles=2,
+        )
+    
+    def make_log_alpha() -> nn.Module:
+        return LogParam()
 
     def make_optimizer(params) -> torch.optim.Optimizer:
         return torch.optim.Adam(params, lr=learning_rate)
@@ -69,7 +95,10 @@ def dsrl_config(
             "make_noise_actor_optimizer": make_optimizer,
             "make_critic": make_critic,
             "make_critic_optimizer": make_optimizer,
-
+            "make_z_critic": make_noise_critic,
+            "make_z_critic_optimizer": make_optimizer,
+            "make_log_alpha": make_log_alpha,
+            "make_log_alpha_optimizer": make_optimizer,
             "discount": discount,
             "target_update_rate": target_update_rate,
             "flow_steps": flow_steps,

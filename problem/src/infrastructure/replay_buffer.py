@@ -23,6 +23,45 @@ class ReplayBuffer:
 
     def __len__(self):
         return self.size
+        
+    def insert_batch(
+        self,
+        /,
+        observations: List[np.ndarray],
+        actions: List[np.ndarray],
+        rewards: List[np.ndarray],
+        next_observations: List[np.ndarray],
+        dones: List[np.ndarray],
+        batch_size
+    ):
+        """
+        Insert many transitions into the replay buffer.
+
+        Use like:
+            replay_buffer.insert(
+                observations=observations,
+                actions=actions,
+                rewards=rewards,
+                next_observations=next_observations,
+                dones=dones,
+            )
+        """
+
+        assert len(observations) == batch_size
+        assert len(actions) == batch_size
+        assert len(rewards) == batch_size
+        assert len(next_observations) == batch_size
+        assert len(dones) == batch_size
+        
+
+        for i in range(batch_size):
+            self.insert(
+                observations[i], 
+                actions[i], 
+                rewards[i], 
+                next_observations[i],
+                dones[i]
+            )
 
     def insert(
         self,
