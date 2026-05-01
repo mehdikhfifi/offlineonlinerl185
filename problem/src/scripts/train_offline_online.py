@@ -6,7 +6,7 @@ import numpy as np
 import wandb
 import torch
 import tqdm
-
+import wandb
 import configs
 from agents import agents
 from infrastructure import utils
@@ -93,7 +93,7 @@ def run_online_training_loop(config: dict, train_logger, eval_logger, args: argp
     torch.manual_seed(args.seed)
     ptu.init_gpu(use_gpu=not args.no_gpu, gpu_id=args.which_gpu)
 
-    env, dataset = config["make_env_and_dataset"]()
+    env, offline_dataset = config["make_env_and_dataset"]()
     eval_env, _ = config["make_env_and_dataset"]()
 
     ep_len = _episode_length(env)
@@ -115,8 +115,14 @@ def run_online_training_loop(config: dict, train_logger, eval_logger, args: argp
 
     # Offline Data Prefill (4.1)
     if offline_data > 0:
-        prefill = dataset.sample(offline_data)
-        replay_buffer.insert_batch(**prefill, batch_size=offline_data)
+        prefill = offline_dataset.sample(offline_data)
+        replay_buffer.insert_batch(
+            observations=prefill['observations'],
+            actions=prefill['actions'],
+            rewards=prefill['rewards'],
+            next_observations=prefill['next_observations'],
+            dones=prefill['dones'],
+        )
 
     observation, _ = env.reset()
 
@@ -193,9 +199,9 @@ def run_online_training_loop(config: dict, train_logger, eval_logger, args: argp
                 step=log_step,
             )
 
-            dump_log(agent, train_logger, eval_logger, config, args.save_dir)
+            # dump_log(agent, train_logger, eval_logger, config, args.save_dir)
 
-    return dump_log(agent, train_logger, eval_logger, config, args.save_dir)
+    # return dump_log(agent, train_logger, eval_logger, config, args.save_dir)
 
 
 def setup_arguments(args=None):
@@ -223,6 +229,8 @@ def setup_arguments(args=None):
 
     parser.add_argument("--njobs", type=int, default=None)
     parser.add_argument("job_specs", nargs="*")
+    parser.add_argument("--actor_factor", type=int, default = None)
+    parser.add_argument("--k", type= int, default = None)
 
     args = parser.parse_args(args=args)
 
@@ -245,8 +253,7 @@ def main(args):
     config['online_eval_interval'] = args.online_eval_interval
     config['num_eval_trajectories'] = args.num_eval_trajectories
     config['replay_buffer_capacity'] = args.replay_buffer_capacity
-    config['offline_data'] = args.offline_data
-    config['wsrl_steps'] = args.wsrl_steps
+    
     
 
     exp_name = f"sd{args.seed}_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{config['log_name']}"
@@ -268,6 +275,13 @@ def main(args):
         exp_name = f"{exp_name}_online"
     if args.offline_training_steps > 0:
         exp_name = f"{exp_name}_offline"
+    if args.actor_factor is not None:
+        config['agent_kwargs']['actor_factor'] = args.actor_factor
+        exp_name = f"{exp_name}_actor_factor{args.actor_factor}"
+    if args.k is not None:
+        config['agent_kwargs']['k'] = args.k
+        exp_name = f"{exp_name}_k={args.k}"
+
 
     if args.online_training_steps > 0 and args.offline_training_steps == 0:
         raise ValueError(
@@ -296,6 +310,8 @@ def main(args):
     finally:
         wandb.finish()
 
+    print("done training boss")
+    wandb.finish()
 
 if __name__ == "__main__":
     args = setup_arguments()

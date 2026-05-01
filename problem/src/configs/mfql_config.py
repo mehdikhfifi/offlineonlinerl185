@@ -13,7 +13,7 @@ from networks.rl_networks import Policy, EnsembleCritic, DeterministicPolicy, Ve
 
 
 
-def fql_config(
+def mfql_config(
     env_name: str,
     exp_name: Optional[str] = None,
     hidden_size: int = 512,
@@ -23,9 +23,9 @@ def fql_config(
     target_update_rate: float = 0.005,
     flow_steps: int = 10,
     alpha: float = 1.0,
+    k: int = 3,
     total_steps: int = 1000000,
     batch_size: int = 256,
-    actor_factor : int = 1,
     **kwargs,
 ):
     def make_bc_actor(observation_shape: Tuple[int, ...], action_dim: int) -> nn.Module:
@@ -33,7 +33,7 @@ def fql_config(
             ac_dim=action_dim,
             ob_dim=int(np.prod(observation_shape)),
             n_layers=num_layers,
-            layer_size= hidden_size,
+            layer_size=hidden_size,
         )
 
     def make_onestep_actor(observation_shape: Tuple[int, ...], action_dim: int) -> nn.Module:
@@ -41,7 +41,7 @@ def fql_config(
             ac_dim=action_dim,
             ob_dim=int(np.prod(observation_shape)),
             n_layers=num_layers,
-            layer_size= actor_factor * hidden_size,
+            layer_size=hidden_size,
         )
 
     def make_critic(observation_shape: Tuple[int, ...], action_dim: int) -> nn.Module:
@@ -69,7 +69,7 @@ def fql_config(
 
         return env, dataset
 
-    log_string = f"{exp_name or 'fql'}_{env_name}"
+    log_string = f"{exp_name or 'mfql'}_{env_name}"
 
     config = {
         "agent_kwargs": {
@@ -84,9 +84,9 @@ def fql_config(
             "target_update_rate": target_update_rate,
             "flow_steps": flow_steps,
             "alpha": alpha,
-            "actor_factor": actor_factor
+            "k": k,
         },
-        "agent": "fql",
+        "agent": "mfql",
         "log_name": log_string,
         "make_env_and_dataset": make_env_and_dataset,
         "total_steps": total_steps,
